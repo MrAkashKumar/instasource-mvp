@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">Mechanical part blueprint</title>
+  <desc id="desc">A simplified technical drawing of a machined enclosure.</desc>
+  <rect width="640" height="360" fill="#f7fafc"/>
+  <path d="M0 40h640M0 80h640M0 120h640M0 160h640M0 200h640M0 240h640M0 280h640M0 320h640M40 0v360M80 0v360M120 0v360M160 0v360M200 0v360M240 0v360M280 0v360M320 0v360M360 0v360M400 0v360M440 0v360M480 0v360M520 0v360M560 0v360M600 0v360" stroke="#d8e3ea" stroke-width="1"/>
+  <rect x="124" y="84" width="392" height="188" rx="18" fill="#eaf2f7" stroke="#1f6f8b" stroke-width="4"/>
+  <rect x="184" y="132" width="272" height="92" rx="10" fill="#ffffff" stroke="#294556" stroke-width="3"/>
+  <circle cx="166" cy="126" r="18" fill="#ffffff" stroke="#1f6f8b" stroke-width="3"/>
+  <circle cx="474" cy="126" r="18" fill="#ffffff" stroke="#1f6f8b" stroke-width="3"/>
+  <circle cx="166" cy="230" r="18" fill="#ffffff" stroke="#1f6f8b" stroke-width="3"/>
+  <circle cx="474" cy="230" r="18" fill="#ffffff" stroke="#1f6f8b" stroke-width="3"/>
+  <path d="M124 304h392M124 296v16M516 296v16" stroke="#c76b35" stroke-width="3"/>
+  <text x="278" y="330" font-family="Arial, sans-serif" font-size="18" fill="#294556">L 142.00 mm</text>
+  <path d="M548 84v188M540 84h16M540 272h16" stroke="#c76b35" stroke-width="3"/>
+  <text x="566" y="184" font-family="Arial, sans-serif" font-size="18" fill="#294556" transform="rotate(90 566 184)">W 72.00 mm</text>
+  <text x="146" y="64" font-family="Arial, sans-serif" font-size="18" fill="#294556">Al 6061-T6 | CNC | Anodize</text>
+</svg>

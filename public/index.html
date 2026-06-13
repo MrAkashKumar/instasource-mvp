@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InstaSource</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="console-shell">
+      <aside class="command-rail">
+        <div class="brand-block">
+          <span class="brand-mark">IS</span>
+          <div>
+            <p>InstaSource</p>
+            <strong>Sourcing cockpit</strong>
+          </div>
+        </div>
+
+        <section class="rail-section">
+          <h2>Run Flow</h2>
+          <div class="progress-strip" id="progressStrip">
+            <span class="active"><b>01</b> Intake</span>
+            <span><b>02</b> Spec</span>
+            <span><b>03</b> Suppliers</span>
+            <span><b>04</b> Report</span>
+          </div>
+        </section>
+
+        <section class="rail-section provider-stack">
+          <h2>Provider Stack</h2>
+          <div class="status-pill" id="healthStatus">Checking providers</div>
+          <ul>
+            <li><span>Vision</span><strong>SenseNova / Kimi</strong></li>
+            <li><span>Discovery</span><strong>Bright Data</strong></li>
+            <li><span>Sandbox</span><strong>Daytona</strong></li>
+            <li><span>Identity</span><strong>Terminal 3</strong></li>
+          </ul>
+        </section>
+
+        <section class="rail-section privacy-rail">
+          <h2>Privacy</h2>
+          <p>Shipping identity stays behind a private reference during supplier discovery.</p>
+        </section>
+      </aside>
+
+      <section class="main-stage">
+        <header class="stage-header">
+          <div>
+            <p class="eyebrow">Autonomous B2B Manufacturing Agent</p>
+            <h1>Manufacturing sourcing desk</h1>
+            <p class="stage-subtitle">Extract specs, discover suppliers, compare landed cost, and rank the best manufacturing matches.</p>
+          </div>
+          <button class="primary-button header-button" type="submit" form="sourceForm" id="headerSubmitButton">Run analysis</button>
+        </header>
+
+        <section class="workspace">
+          <form id="sourceForm" class="panel intake-panel">
+            <div class="section-heading">
+              <div>
+                <span class="section-kicker">Input</span>
+                <h2>Part Intake</h2>
+              </div>
+              <span id="fileState">No file selected</span>
+            </div>
+
+            <label class="upload-box" for="blueprintInput">
+              <input id="blueprintInput" name="blueprint" type="file" accept="image/*,.pdf,.dxf,.step,.stp" />
+              <span class="scan-frame">
+                <img id="previewImage" src="sample-part.svg" alt="Blueprint preview" />
+                <span class="scan-line"></span>
+              </span>
+              <span class="upload-title">Blueprint, product image, or CAD file</span>
+              <span class="upload-meta">PNG, JPG, PDF, DXF, STEP</span>
+            </label>
+
+            <div class="quick-stats">
+              <div><span>Target</span><strong>Top 3</strong></div>
+              <div><span>Mode</span><strong>Hybrid</strong></div>
+              <div><span>PII</span><strong>Masked</strong></div>
+            </div>
+
+            <div class="field-grid">
+              <label>
+                Part name
+                <input name="partName" value="Aluminum mechanical keyboard case" required />
+              </label>
+              <label>
+                Quantity
+                <input name="quantity" type="number" min="1" value="250" required />
+              </label>
+              <label>
+                Material hint
+                <input name="materialHint" value="Aluminum 6061" />
+              </label>
+              <label>
+                Process hint
+                <select name="processHint">
+                  <option>CNC machining</option>
+                  <option>Injection molding</option>
+                  <option>PCB fabrication</option>
+                  <option>Sheet metal fabrication</option>
+                </select>
+              </label>
+              <label>
+                Finish
+                <input name="finishHint" value="Black anodized" />
+              </label>
+              <label>
+                Tolerance
+                <input name="toleranceHint" value="+/- 0.10 mm" />
+              </label>
+              <label>
+                Destination country
+                <input name="destinationCountry" value="US" />
+              </label>
+              <label>
+                Postal code
+                <input name="destinationPostal" value="94107" />
+              </label>
+            </div>
+
+            <div class="private-fields">
+              <label>
+                Company
+                <input name="companyName" value="Acme Hardware" />
+              </label>
+              <label>
+                Shipping address
+                <textarea name="shippingAddress" rows="3">1 Market Street, San Francisco, CA 94107</textarea>
+              </label>
+            </div>
+
+            <button class="primary-button mobile-submit" type="submit" id="submitButton">Run sourcing analysis</button>
+          </form>
+
+          <section class="panel report-panel">
+            <div class="section-heading">
+              <div>
+                <span class="section-kicker">Output</span>
+                <h2>Sourcing Report</h2>
+              </div>
+              <span id="requestId">Ready</span>
+            </div>
+
+            <div id="emptyState" class="empty-state">
+              <div class="empty-graphic">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <h3>Awaiting sourcing run</h3>
+              <p>Results will appear as a ranked manufacturer board with specs, landed cost, timeline, and risk checks.</p>
+            </div>
+
+            <div id="results" class="results hidden">
+              <div class="metric-grid">
+                <article class="metric-card">
+                  <span>Feasibility</span>
+                  <strong id="feasibility">-</strong>
+                </article>
+                <article class="metric-card">
+                  <span>Cost range</span>
+                  <strong id="costRange">-</strong>
+                </article>
+                <article class="metric-card">
+                  <span>Timeline</span>
+                  <strong id="timeline">-</strong>
+                </article>
+                <article class="metric-card">
+                  <span>Spec confidence</span>
+                  <strong id="confidenceMetric">-</strong>
+                </article>
+              </div>
+
+              <div class="report-layout">
+                <section class="result-section spec-board">
+                  <div class="section-heading compact">
+                    <h3>Technical Specification</h3>
+                    <span id="specSource">-</span>
+                  </div>
+                  <dl id="specList" class="spec-list"></dl>
+                </section>
+
+                <section class="result-section logistics-board">
+                  <div class="section-heading compact">
+                    <h3>Landed Cost Model</h3>
+                    <span id="hsCode">-</span>
+                  </div>
+                  <div class="logistics-grid">
+                    <div><span>Duty rate</span><strong id="dutyRate">-</strong></div>
+                    <div><span>Destination</span><strong id="destinationMetric">-</strong></div>
+                    <div><span>Privacy ref</span><strong id="privacyProvider">-</strong></div>
+                  </div>
+                  <p id="privacyNote" class="privacy-note"></p>
+                </section>
+              </div>
+
+              <section class="result-section">
+                <div class="section-heading compact">
+                  <h3>Top Manufacturers</h3>
+                  <span>Ranked fit</span>
+                </div>
+                <div id="supplierList" class="supplier-list"></div>
+              </section>
+
+              <section class="result-section">
+                <div class="section-heading compact">
+                  <h3>Risks and Buyer Questions</h3>
+                  <span>Review queue</span>
+                </div>
+                <div class="two-column">
+                  <div class="note-list">
+                    <h4>Risks</h4>
+                    <ul id="riskList"></ul>
+                  </div>
+                  <div class="note-list">
+                    <h4>Questions</h4>
+                    <ul id="questionList"></ul>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

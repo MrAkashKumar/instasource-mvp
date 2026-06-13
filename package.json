@@ -1,0 +1,14 @@
+{
+  "name": "instasource-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonomous B2B manufacturing and sourcing agent MVP.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check src/config.js && node --check src/http.js && node --check src/pipeline.js && node --check src/providers/vision.js && node --check src/providers/suppliers.js && node --check src/providers/analysis.js && node --check src/providers/logistics.js && node --check src/providers/privacy.js && node --check src/utils/scoring.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
