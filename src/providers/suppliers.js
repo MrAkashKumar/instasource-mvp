@@ -1,20 +1,55 @@
 const { MOCK_SUPPLIERS } = require("../data/mock-suppliers");
 const { inferProcessFromText } = require("../utils/scoring");
 
-async function discoverSuppliers(spec, request, config) {
-  if (config.brightData.apiKey && config.brightData.zoneReady) {
+async function discoverSuppliers(spec, request, config, requestId) {
+  const errors = [];
+  if (config.brightData.apiKey) {
     try {
-      const live = await discoverWithBrightData(spec, request, config);
-      if (live.length > 0) return live;
+      const live = await discoverWithBrightData(spec, request, config, requestId);
+      if (live.candidates.length > 0) return live;
+      if (config.liveOnly && !config.fallbackToMock) {
+        throw liveProviderError("Bright Data returned no supplier candidates for the extracted specification.", 502);
+      }
+      errors.push("Bright Data returned no supplier candidates for the extracted specification.");
     } catch (error) {
-      console.warn(`Bright Data discovery failed, falling back: ${error.message}`);
+      errors.push(error.message);
+      console.warn(`Bright Data discovery failed: ${error.message}`);
+      if (config.liveOnly && !config.fallbackToMock) throw liveProviderError(error.message, error.statusCode || 502);
     }
   }
 
-  return discoverWithMockDirectory(spec);
+  if (config.liveOnly && !config.fallbackToMock) {
+    if (!config.brightData.apiKey) {
+      throw liveProviderError("Live-only mode requires BRIGHT_DATA_API_KEY for supplier discovery.", 500);
+    }
+  }
+
+  const candidates = discoverWithMockDirectory(spec);
+  return {
+    candidates,
+    discovery: {
+      id: `mock_${Date.now()}`,
+      requestId,
+      provider: "mock-directory",
+      status: "mock",
+      query: errors.length ? "Bright Data fallback to local supplier directory" : "local fallback directory",
+      sources: errors.length ? [{ title: "Bright Data fallback", status: "fallback", chars: errors.join(" | ").length }] : [],
+      documents: errors.length ? [{ title: "Bright Data fallback reason", content: errors.join(" | "), snippet: errors.join(" | "), chars: errors.join(" | ").length }] : [],
+      candidates,
+      fallbackReason: errors.join(" | "),
+      createdAt: new Date().toISOString(),
+    },
+  };
 }
 
-async function discoverWithBrightData(spec, request, config) {
+function liveProviderError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.expose = true;
+  return error;
+}
+
+async function discoverWithBrightData(spec, request, config, requestId) {
   const query = [
     spec.material,
     spec.process,
@@ -30,21 +65,24 @@ async function discoverWithBrightData(spec, request, config) {
   ];
 
   const documents = [];
+  const sources = [];
   for (const url of urls) {
+    const body = {
+      url,
+      format: "json",
+      method: "GET",
+      data_format: "markdown",
+      country: countryForSearch(request.destinationCountry),
+    };
+    if (config.brightData.zoneReady) body.zone = config.brightData.zone;
+
     const response = await fetchWithTimeout(config.brightData.endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.brightData.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        zone: config.brightData.zone,
-        url,
-        format: "json",
-        method: "GET",
-        data_format: "markdown",
-        country: countryForSearch(request.destinationCountry),
-      }),
+      body: JSON.stringify(body),
     }, config.brightData.timeoutMs);
 
     if (!response.ok) {
@@ -52,10 +90,38 @@ async function discoverWithBrightData(spec, request, config) {
     }
 
     const data = await response.json();
-    documents.push(String(data.body || data.content || data.markdown || JSON.stringify(data)).slice(0, 12000));
+    const text = String(data.body || data.content || data.markdown || JSON.stringify(data)).slice(0, 12000);
+    documents.push({
+      url,
+      title: sourceTitle(url),
+      chars: text.length,
+      content: text,
+      snippet: text.slice(0, 900),
+    });
+    sources.push({
+      url,
+      title: sourceTitle(url),
+      status: response.status,
+      chars: text.length,
+    });
   }
 
-  return extractSupplierCandidates(documents.join("\n"), spec);
+  const candidates = extractSupplierCandidates(documents.map((doc) => doc.content).join("\n"), spec);
+  return {
+    candidates,
+    discovery: {
+      id: `bd_${Date.now()}`,
+      requestId,
+      provider: "bright-data",
+      status: "completed",
+      query,
+      sources,
+      documents,
+      candidates,
+      createdAt: new Date().toISOString(),
+      zoneUsed: config.brightData.zoneReady ? config.brightData.zone : "",
+    },
+  };
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -117,10 +183,17 @@ function extractSupplierCandidates(markdown, spec) {
       shippingBaseUsd: 280,
       publicSignals: [line.slice(0, 220)],
       source: "bright-data-web",
+      sourceUrl: "",
     });
   }
 
   return candidates;
+}
+
+function sourceTitle(url) {
+  if (url.includes("Thomasnet")) return "Google results: Thomasnet suppliers";
+  if (url.includes("Alibaba")) return "Google results: Alibaba manufacturers";
+  return "Bright Data web source";
 }
 
 function discoverWithMockDirectory(spec) {

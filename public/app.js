@@ -9,13 +9,21 @@ const requestId = document.querySelector("#requestId");
 const emptyState = document.querySelector("#emptyState");
 const results = document.querySelector("#results");
 const progressStrip = document.querySelector("#progressStrip");
+const searchVisual = document.querySelector("#searchVisual");
+const searchSteps = document.querySelector("#searchSteps");
+const storeList = document.querySelector("#storeList");
+const refreshStoreButton = document.querySelector("#refreshStoreButton");
 let apiBase = window.location.protocol === "file:" ? "" : "";
+let progressTimer = null;
 
 let selectedFile = null;
 let selectedFileBase64 = "";
 
 hydrateFromQuery();
 initHealth();
+loadDiscoveryStore();
+
+refreshStoreButton?.addEventListener("click", loadDiscoveryStore);
 
 fileInput.addEventListener("change", async (event) => {
   selectedFile = event.target.files[0] || null;
@@ -40,7 +48,7 @@ fileInput.addEventListener("change", async (event) => {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   setLoading(true);
-  setProgress(1);
+  beginVisualSearch();
 
   try {
     const data = Object.fromEntries(new FormData(form).entries());
@@ -52,8 +60,7 @@ form.addEventListener("submit", async (event) => {
       fileBase64: selectedFileBase64,
     };
 
-    setProgress(2);
-    const response = await fetch(`${apiBase}/api/source`, {
+    const response = await fetchApi("/api/source", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -64,12 +71,13 @@ form.addEventListener("submit", async (event) => {
       throw new Error(error.error || `Request failed: ${response.status}`);
     }
 
-    setProgress(3);
     const result = await response.json();
     renderResult(result);
-    setProgress(4);
+    await loadDiscoveryStore();
+    finishVisualSearch();
   } catch (error) {
     requestId.textContent = error.message;
+    markSearchError(error.message);
   } finally {
     setLoading(false);
   }
@@ -88,6 +96,7 @@ async function initHealth() {
         .map((entry) => entry[0]);
       const warning = health.warnings?.[0] ? ` | ${health.warnings[0]}` : "";
       healthStatus.textContent = live.length ? `Live: ${live.join(", ")}${warning}` : `Mock mode ready${warning}`;
+      renderProviderStatus(health.providers);
       return;
     } catch {
       // Try the next candidate.
@@ -144,6 +153,7 @@ function renderResult(result) {
   document.querySelector("#destinationMetric").textContent = result.logistics.destinationCountry || "-";
   document.querySelector("#privacyProvider").textContent = result.privacy.provider || "-";
 
+  renderDiscovery(result.discovery);
   renderSpec(result.specification);
   renderSuppliers(result.suppliers, result.logistics.destinationCountry);
   renderList("#riskList", result.report.risks || []);
@@ -151,6 +161,30 @@ function renderResult(result) {
 
   document.querySelector("#privacyNote").textContent =
     `Address hidden from model and supplier discovery. Private reference: ${result.privacy.sealedReference}.`;
+}
+
+function renderDiscovery(discovery) {
+  if (!discovery) return;
+  document.querySelector("#discoveryQuery").textContent = discovery.query || "-";
+  document.querySelector("#sourceCount").textContent = String(discovery.sources?.length || 0);
+  document.querySelector("#candidateCount").textContent = String(discovery.candidates?.length || 0);
+  document.querySelector("#discoveryLink").href = `#discoveryStore`;
+
+  const sourceList = document.querySelector("#sourceList");
+  sourceList.innerHTML = "";
+  for (const source of discovery.sources || []) {
+    const item = document.createElement("a");
+    item.className = "source-card";
+    item.href = source.url;
+    item.target = "_blank";
+    item.rel = "noreferrer";
+    const title = document.createElement("strong");
+    title.textContent = source.title || "Bright Data source";
+    const meta = document.createElement("span");
+    meta.textContent = `${source.status || "fetched"} | ${source.chars || 0} chars`;
+    item.append(title, meta);
+    sourceList.append(item);
+  }
 }
 
 function renderSpec(spec) {
@@ -202,10 +236,10 @@ function renderSuppliers(suppliers, destinationCountry) {
     title.textContent = supplier.name;
     const location = document.createElement("p");
     location.className = "supplier-location";
-    location.textContent = `${supplier.region}, ${supplier.country} to ${destinationCountry || "destination"} | ${supplier.processes.join(", ")}`;
+    location.textContent = `${supplier.region}, ${supplier.country} to ${destinationCountry || "destination"} | ${(supplier.processes || []).join(", ")}`;
     const chips = document.createElement("div");
     chips.className = "chip-row";
-    for (const reason of supplier.matchReasons.slice(0, 4)) {
+    for (const reason of (supplier.matchReasons || supplier.publicSignals || []).slice(0, 4)) {
       const chip = document.createElement("span");
       chip.textContent = reason;
       chips.append(chip);
@@ -227,6 +261,38 @@ function renderSuppliers(suppliers, destinationCountry) {
 
     card.append(ring, details, cost);
     supplierList.append(card);
+  }
+}
+
+async function loadDiscoveryStore() {
+  if (!storeList) return;
+  try {
+    const response = await fetchApi("/api/discoveries");
+    if (!response.ok) throw new Error(`Store failed: ${response.status}`);
+    const data = await response.json();
+    renderStoreList(data.discoveries || []);
+  } catch {
+    storeList.innerHTML = '<p class="store-empty">Discovery store will appear after the API server is reachable.</p>';
+  }
+}
+
+function renderStoreList(discoveries) {
+  storeList.innerHTML = "";
+  if (!discoveries.length) {
+    storeList.innerHTML = '<p class="store-empty">No Bright Data runs stored yet.</p>';
+    return;
+  }
+  for (const discovery of discoveries.slice(0, 8)) {
+    const card = document.createElement("article");
+    card.className = "store-card";
+    const title = document.createElement("strong");
+    title.textContent = discovery.query || "Supplier discovery";
+    const meta = document.createElement("span");
+    meta.textContent = `${discovery.provider} | ${discovery.sourceCount} sources | ${discovery.candidateCount} candidates`;
+    const id = document.createElement("code");
+    id.textContent = discovery.requestId ? compactRequestId(discovery.requestId) : discovery.id;
+    card.append(title, meta, id);
+    storeList.append(card);
   }
 }
 
@@ -253,6 +319,58 @@ function setProgress(step) {
   [...progressStrip.children].forEach((item, index) => {
     item.classList.toggle("active", index < step);
   });
+}
+
+function beginVisualSearch() {
+  setProgress(1);
+  emptyState.classList.remove("hidden");
+  results.classList.add("hidden");
+  requestId.textContent = "Searching";
+  searchVisual?.classList.remove("idle", "error", "complete");
+  searchVisual?.classList.add("running");
+  let step = 0;
+  activateSearchStep(step);
+  clearInterval(progressTimer);
+  progressTimer = setInterval(() => {
+    step = Math.min(step + 1, 3);
+    setProgress(step + 1);
+    activateSearchStep(step);
+  }, 1400);
+}
+
+function finishVisualSearch() {
+  clearInterval(progressTimer);
+  setProgress(4);
+  activateSearchStep(3);
+  searchVisual?.classList.remove("running", "error");
+  searchVisual?.classList.add("complete");
+}
+
+function markSearchError(message) {
+  clearInterval(progressTimer);
+  searchVisual?.classList.remove("running", "complete");
+  searchVisual?.classList.add("error");
+  requestId.textContent = message;
+}
+
+function activateSearchStep(activeIndex) {
+  [...(searchSteps?.children || [])].forEach((item, index) => {
+    item.classList.toggle("active", index <= activeIndex);
+  });
+}
+
+function renderProviderStatus(providers) {
+  setProviderText("#visionProvider", providers.senseNova || providers.kimi, providers.senseNova ? "SenseNova live" : "Kimi fallback");
+  setProviderText("#brightDataProvider", providers.brightData, "Bright Data key live");
+  setProviderText("#daytonaProvider", providers.daytona, "Daytona ready");
+  setProviderText("#terminal3Provider", providers.terminal3, "Terminal 3 ready");
+}
+
+function setProviderText(selector, isLive, liveText) {
+  const node = document.querySelector(selector);
+  if (!node) return;
+  node.textContent = isLive ? liveText : "Not configured";
+  node.classList.toggle("provider-off", !isLive);
 }
 
 function hydrateFromQuery() {
@@ -283,11 +401,13 @@ function money(value) {
 
 function formatCostRange(range) {
   if (!range) return "-";
+  if (typeof range === "string") return range;
   return `${money(range.low)} - ${money(range.high)}`;
 }
 
 function formatTimeline(timeline) {
   if (!timeline) return "-";
+  if (typeof timeline === "string") return timeline;
   return `${timeline.fastest}-${timeline.conservative} days`;
 }
 

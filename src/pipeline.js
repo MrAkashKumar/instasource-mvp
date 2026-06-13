@@ -5,6 +5,7 @@ const { generateFeasibilityReport } = require("./providers/analysis");
 const { calculateLogistics } = require("./providers/logistics");
 const { sealIdentity } = require("./providers/privacy");
 const { rankSuppliers } = require("./utils/scoring");
+const { saveDiscovery } = require("./discovery-store");
 
 async function runSourcingAnalysis(payload, config) {
   const request = normalizeRequest(payload);
@@ -22,7 +23,9 @@ async function runSourcingAnalysis(payload, config) {
   );
 
   const spec = await extractSpecification(request, config);
-  const supplierCandidates = await discoverSuppliers(spec, request, config);
+  const supplierDiscovery = await discoverSuppliers(spec, request, config, requestId);
+  const discovery = saveDiscovery(supplierDiscovery.discovery);
+  const supplierCandidates = supplierDiscovery.candidates;
   const logistics = await calculateLogistics(spec, supplierCandidates, request, privacy, config);
   const rankedSuppliers = rankSuppliers(spec, supplierCandidates, logistics);
   const report = await generateFeasibilityReport(spec, rankedSuppliers, logistics, request, config);
@@ -31,9 +34,14 @@ async function runSourcingAnalysis(payload, config) {
     requestId,
     createdAt: startedAt,
     status: "completed",
-    providerMode: config.hasLiveProviders ? "hybrid-live" : "mock",
+    providerMode: config.liveOnly && !config.fallbackToMock
+      ? "live-only"
+      : config.hasLiveProviders
+        ? "live-with-mock-fallback"
+        : "mock",
     privacy,
     specification: spec,
+    discovery,
     suppliers: rankedSuppliers.slice(0, 3),
     allCandidates: rankedSuppliers,
     logistics,

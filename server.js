@@ -3,6 +3,7 @@ const path = require("path");
 const { loadConfig } = require("./src/config");
 const { readJsonBody, sendJson, serveStatic } = require("./src/http");
 const { runSourcingAnalysis } = require("./src/pipeline");
+const { listDiscoveries, getDiscovery } = require("./src/discovery-store");
 
 const config = loadConfig();
 const publicDir = path.join(__dirname, "public");
@@ -19,10 +20,31 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, {
         ok: true,
         service: "InstaSource MVP",
-        mode: config.hasLiveProviders ? "hybrid-live" : "mock",
+        mode: config.liveOnly && !config.fallbackToMock
+          ? "live-only"
+          : config.hasLiveProviders
+            ? "live-with-mock-fallback"
+            : "mock",
+        fallbackToMock: config.fallbackToMock,
         providers: config.providerStatus,
         warnings: config.setupWarnings,
       });
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/api/discoveries") {
+      sendJson(res, 200, { discoveries: listDiscoveries() });
+      return;
+    }
+
+    if (req.method === "GET" && req.url.startsWith("/api/discoveries/")) {
+      const id = decodeURIComponent(req.url.split("?")[0].replace("/api/discoveries/", ""));
+      const discovery = getDiscovery(id);
+      if (!discovery) {
+        sendJson(res, 404, { error: "Discovery not found" });
+        return;
+      }
+      sendJson(res, 200, { discovery });
       return;
     }
 
@@ -42,7 +64,7 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     const status = error.statusCode || 500;
     sendJson(res, status, {
-      error: status === 500 ? "Internal server error" : error.message,
+      error: status === 500 && !error.expose ? "Internal server error" : error.message,
       detail: config.nodeEnv === "development" ? error.stack : undefined,
     });
   }

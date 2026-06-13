@@ -1,6 +1,7 @@
 const { inferProcessFromText } = require("../utils/scoring");
 
 async function extractSpecification(request, config) {
+  const errors = [];
   if (config.senseNova.apiKey && config.senseNova.apiUrl && request.fileBase64) {
     try {
       return await extractWithOpenAICompatibleVision({
@@ -11,7 +12,11 @@ async function extractSpecification(request, config) {
         source: "sensanova",
       });
     } catch (error) {
-      console.warn(`SenseNova extraction failed, falling back: ${error.message}`);
+      errors.push(`SenseNova extraction failed: ${error.message}`);
+      console.warn(errors[errors.length - 1]);
+      if (config.liveOnly && !config.fallbackToMock && !config.kimi.apiKey) {
+        throw liveProviderError(errors.join(" | "), 502);
+      }
     }
   }
 
@@ -25,11 +30,34 @@ async function extractSpecification(request, config) {
         source: "kimi-vision",
       });
     } catch (error) {
-      console.warn(`Kimi vision extraction failed, falling back: ${error.message}`);
+      errors.push(`Kimi vision extraction failed: ${error.message}`);
+      console.warn(errors[errors.length - 1]);
     }
   }
 
-  return mockExtractSpecification(request);
+  if (config.liveOnly && !config.fallbackToMock) {
+    if (!request.fileBase64) {
+      throw liveProviderError("Live-only mode requires an uploaded blueprint/image file for vision extraction.", 400);
+    }
+    if (!config.senseNova.apiKey && !config.kimi.apiKey) {
+      throw liveProviderError("Live-only mode requires SENSENOVA_API_KEY or KIMI_API_KEY for vision extraction.", 500);
+    }
+    throw liveProviderError(
+      errors.length
+        ? errors.join(" | ")
+        : "Live vision extraction failed before any provider returned a usable specification.",
+      502
+    );
+  }
+
+  return mockExtractSpecification(request, errors);
+}
+
+function liveProviderError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.expose = true;
+  return error;
 }
 
 async function extractWithOpenAICompatibleVision({ apiUrl, apiKey, model, request, source }) {
@@ -75,7 +103,10 @@ async function extractWithOpenAICompatibleVision({ apiUrl, apiKey, model, reques
   }, source === "kimi-vision" ? configTimeoutFromRequest(request) : 20000);
 
   if (!response.ok) {
-    throw new Error(await providerError("Vision API", response));
+    const modelHint = response.status === 404
+      ? ` Check SENSENOVA_MODEL/KIMI_MODEL. Current model "${model}" was not accepted by ${source}.`
+      : "";
+    throw new Error(`${await providerError("Vision API", response)}${modelHint}`);
   }
 
   const data = await response.json();
@@ -123,7 +154,7 @@ function extractProviderMessage(body) {
   }
 }
 
-function mockExtractSpecification(request) {
+function mockExtractSpecification(request, errors = []) {
   const process = request.processHint || inferProcessFromText(`${request.partName} ${request.materialHint}`);
   const material = request.materialHint || defaultMaterialForProcess(process);
   const finish = request.finishHint || defaultFinishForMaterial(material);
@@ -139,11 +170,14 @@ function mockExtractSpecification(request) {
     certifications: ["ISO 9001 preferred", "Material certificate required"],
     criticalFeatures: ["Drawing revision control", "First article inspection", "DFM review before tooling or machining"],
     assumptions: [
-      "Exact dimensions were not read because no live vision API key is configured.",
+      errors.length
+        ? `Live vision fallback used: ${errors.join(" | ")}`
+        : "Exact dimensions were not read because no live vision API key is configured.",
       "Cost estimates use category-level manufacturing heuristics.",
     ],
     confidence: request.fileBase64 ? 0.58 : 0.42,
-    source: "mock-heuristic",
+    source: errors.length ? "fallback-mock-heuristic" : "mock-heuristic",
+    fallbackReason: errors.join(" | "),
   };
 }
 

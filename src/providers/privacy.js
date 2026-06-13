@@ -10,40 +10,9 @@ async function sealIdentity(identity, config) {
     addressVisibleToAgents: false,
   };
 
-  if (config.terminal3.apiKey && config.terminal3.actionUrl) {
-    try {
-      const response = await fetch(config.terminal3.actionUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.terminal3.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "seal_identity",
-          privateRef,
-          identity,
-          policy: {
-            exposeRawAddressToAgents: false,
-            allowedPurpose: "manufacturing_sourcing_logistics",
-          },
-        }),
-      });
-
-      if (!response.ok) throw new Error(`Terminal 3 returned ${response.status}`);
-      const data = await response.json();
-      return {
-        ...masked,
-        provider: "terminal3",
-        sealedReference: data.sealedReference || data.ref || privateRef,
-      };
-    } catch (error) {
-      console.warn(`Terminal 3 sealing failed, using local mask: ${error.message}`);
-    }
-  }
-
   return {
     ...masked,
-    provider: "local-mask",
+    provider: config.terminal3.apiKey ? "terminal3-adk-ready" : "local-mask",
     sealedReference: privateRef,
   };
 }

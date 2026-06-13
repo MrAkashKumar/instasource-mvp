@@ -3,11 +3,31 @@ async function generateFeasibilityReport(spec, suppliers, logistics, request, co
     try {
       return await generateWithKimi(spec, suppliers, logistics, request, config);
     } catch (error) {
-      console.warn(`Kimi report generation failed, falling back: ${error.message}`);
+      console.warn(`Kimi report generation failed: ${error.message}`);
+      if (config.liveOnly && !config.fallbackToMock) throw liveProviderError(error.message, error.statusCode || 502);
+      return {
+        ...generateDeterministicReport(spec, suppliers, logistics),
+        source: "fallback-deterministic",
+        fallbackReason: error.message,
+      };
     }
   }
 
-  return generateDeterministicReport(spec, suppliers, logistics);
+  if (config.liveOnly && !config.fallbackToMock) {
+    throw liveProviderError("Live-only mode requires KIMI_API_KEY for report generation.", 500);
+  }
+
+  return {
+    ...generateDeterministicReport(spec, suppliers, logistics),
+    source: "deterministic",
+  };
+}
+
+function liveProviderError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.expose = true;
+  return error;
 }
 
 async function generateWithKimi(spec, suppliers, logistics, request, config) {

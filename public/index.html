@@ -31,10 +31,10 @@
           <h2>Provider Stack</h2>
           <div class="status-pill" id="healthStatus">Checking providers</div>
           <ul>
-            <li><span>Vision</span><strong>SenseNova / Kimi</strong></li>
-            <li><span>Discovery</span><strong>Bright Data</strong></li>
-            <li><span>Sandbox</span><strong>Daytona</strong></li>
-            <li><span>Identity</span><strong>Terminal 3</strong></li>
+            <li><span>Vision</span><strong id="visionProvider">SenseNova / Kimi</strong></li>
+            <li><span>Discovery</span><strong id="brightDataProvider">Bright Data</strong></li>
+            <li><span>Sandbox</span><strong id="daytonaProvider">Daytona</strong></li>
+            <li><span>Identity</span><strong id="terminal3Provider">Terminal 3</strong></li>
           </ul>
         </section>
 
@@ -144,16 +144,47 @@
             </div>
 
             <div id="emptyState" class="empty-state">
-              <div class="empty-graphic">
-                <span></span>
-                <span></span>
-                <span></span>
+              <div class="search-visual idle" id="searchVisual">
+                <div class="radar">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <b></b>
+                </div>
+                <div class="search-steps" id="searchSteps">
+                  <span class="active">Read blueprint</span>
+                  <span>Build supplier query</span>
+                  <span>Fetch Bright Data</span>
+                  <span>Rank factory fit</span>
+                </div>
               </div>
               <h3>Awaiting sourcing run</h3>
               <p>Results will appear as a ranked manufacturer board with specs, landed cost, timeline, and risk checks.</p>
             </div>
 
             <div id="results" class="results hidden">
+              <section class="result-section discovery-board">
+                <div class="section-heading compact">
+                  <h3>Bright Data Discovery Store</h3>
+                  <a id="discoveryLink" href="#discoveryStore">View stored scrape</a>
+                </div>
+                <div class="discovery-grid">
+                  <div>
+                    <span>Search query</span>
+                    <strong id="discoveryQuery">-</strong>
+                  </div>
+                  <div>
+                    <span>Sources fetched</span>
+                    <strong id="sourceCount">-</strong>
+                  </div>
+                  <div>
+                    <span>Parsed candidates</span>
+                    <strong id="candidateCount">-</strong>
+                  </div>
+                </div>
+                <div id="sourceList" class="source-list"></div>
+              </section>
+
               <div class="metric-grid">
                 <article class="metric-card">
                   <span>Feasibility</span>
@@ -222,6 +253,17 @@
               </section>
             </div>
           </section>
+        </section>
+
+        <section id="discoveryStore" class="store-panel">
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">Bright Data</span>
+              <h2>Discovery Store</h2>
+            </div>
+            <button class="ghost-button" type="button" id="refreshStoreButton">Refresh</button>
+          </div>
+          <div id="storeList" class="store-list"></div>
         </section>
       </section>
     </main>
