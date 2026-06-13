@@ -21,6 +21,7 @@ const server = http.createServer(async (req, res) => {
         service: "InstaSource MVP",
         mode: config.hasLiveProviders ? "hybrid-live" : "mock",
         providers: config.providerStatus,
+        warnings: config.setupWarnings,
       });
       return;
     }

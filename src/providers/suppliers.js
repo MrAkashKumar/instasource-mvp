@@ -2,7 +2,7 @@ const { MOCK_SUPPLIERS } = require("../data/mock-suppliers");
 const { inferProcessFromText } = require("../utils/scoring");
 
 async function discoverSuppliers(spec, request, config) {
-  if (config.brightData.apiKey) {
+  if (config.brightData.apiKey && config.brightData.zoneReady) {
     try {
       const live = await discoverWithBrightData(spec, request, config);
       if (live.length > 0) return live;
@@ -31,24 +31,24 @@ async function discoverWithBrightData(spec, request, config) {
 
   const documents = [];
   for (const url of urls) {
-    const response = await fetch(config.brightData.endpoint, {
+    const response = await fetchWithTimeout(config.brightData.endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.brightData.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        zone: config.brightData.zone || "web_unlocker",
+        zone: config.brightData.zone,
         url,
         format: "json",
         method: "GET",
         data_format: "markdown",
         country: countryForSearch(request.destinationCountry),
       }),
-    });
+    }, config.brightData.timeoutMs);
 
     if (!response.ok) {
-      throw new Error(`Bright Data returned ${response.status}`);
+      throw new Error(await providerError("Bright Data", response));
     }
 
     const data = await response.json();
@@ -56,6 +56,37 @@ async function discoverWithBrightData(spec, request, config) {
   }
 
   return extractSupplierCandidates(documents.join("\n"), spec);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`Bright Data timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function providerError(provider, response) {
+  const body = await response.text().catch(() => "");
+  const message = extractProviderMessage(body);
+  return `${provider} returned ${response.status}${message ? `: ${message}` : ""}`;
+}
+
+function extractProviderMessage(body) {
+  if (!body) return "";
+  try {
+    const data = JSON.parse(body);
+    return data.error?.message || data.message || JSON.stringify(data).slice(0, 240);
+  } catch {
+    return body.slice(0, 240);
+  }
 }
 
 function extractSupplierCandidates(markdown, spec) {

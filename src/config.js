@@ -4,10 +4,19 @@ const path = require("path");
 function loadConfig() {
   loadDotEnv(path.join(__dirname, "..", ".env"));
 
+  const brightDataZone = process.env.BRIGHT_DATA_ZONE || "";
+  const brightDataZoneReady = isLikelyBrightDataZone(brightDataZone);
+  const setupWarnings = [];
+  if (process.env.BRIGHT_DATA_API_KEY && !brightDataZoneReady) {
+    setupWarnings.push(
+      "Bright Data API key is set, but BRIGHT_DATA_ZONE must be your Web Unlocker/SERP product zone name, not a country code like 'us'."
+    );
+  }
+
   const providerStatus = {
     senseNova: Boolean(process.env.SENSENOVA_API_KEY && process.env.SENSENOVA_API_URL),
     kimi: Boolean(process.env.KIMI_API_KEY),
-    brightData: Boolean(process.env.BRIGHT_DATA_API_KEY),
+    brightData: Boolean(process.env.BRIGHT_DATA_API_KEY && brightDataZoneReady),
     daytona: Boolean(process.env.DAYTONA_API_KEY),
     terminal3: Boolean(process.env.TERMINAL3_API_KEY),
   };
@@ -18,6 +27,7 @@ function loadConfig() {
     port: Number(process.env.PORT || 4123),
     hasLiveProviders: Object.values(providerStatus).some(Boolean),
     providerStatus,
+    setupWarnings,
     senseNova: {
       apiKey: process.env.SENSENOVA_API_KEY || "",
       apiUrl: process.env.SENSENOVA_API_URL || "",
@@ -27,11 +37,16 @@ function loadConfig() {
       apiKey: process.env.KIMI_API_KEY || "",
       baseUrl: trimRight(process.env.KIMI_BASE_URL || "https://api.moonshot.ai/v1", "/"),
       model: process.env.KIMI_MODEL || "kimi-k2.6",
+      reportModel: process.env.KIMI_REPORT_MODEL || "moonshot-v1-8k",
+      timeoutMs: Number(process.env.KIMI_TIMEOUT_MS || 20000),
+      maxTokens: Number(process.env.KIMI_MAX_TOKENS || 2000),
     },
     brightData: {
       apiKey: process.env.BRIGHT_DATA_API_KEY || "",
-      zone: process.env.BRIGHT_DATA_ZONE || "",
+      zone: brightDataZone,
+      zoneReady: brightDataZoneReady,
       endpoint: process.env.BRIGHT_DATA_ENDPOINT || "https://api.brightdata.com/request",
+      timeoutMs: Number(process.env.BRIGHT_DATA_TIMEOUT_MS || 12000),
     },
     daytona: {
       apiKey: process.env.DAYTONA_API_KEY || "",
@@ -42,6 +57,13 @@ function loadConfig() {
       actionUrl: process.env.TERMINAL3_ACTION_URL || "",
     },
   };
+}
+
+function isLikelyBrightDataZone(zone) {
+  const value = String(zone || "").trim();
+  if (!value) return false;
+  if (/^[a-z]{2}$/i.test(value)) return false;
+  return /^[a-zA-Z0-9_-]{3,80}$/.test(value);
 }
 
 function loadDotEnv(envPath) {

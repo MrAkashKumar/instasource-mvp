@@ -9,7 +9,7 @@ const requestId = document.querySelector("#requestId");
 const emptyState = document.querySelector("#emptyState");
 const results = document.querySelector("#results");
 const progressStrip = document.querySelector("#progressStrip");
-const apiBase = window.location.protocol === "file:" ? "http://127.0.0.1:4123" : "";
+let apiBase = window.location.protocol === "file:" ? "" : "";
 
 let selectedFile = null;
 let selectedFileBase64 = "";
@@ -76,16 +76,57 @@ form.addEventListener("submit", async (event) => {
 });
 
 async function initHealth() {
-  try {
-    const response = await fetch(`${apiBase}/api/health`);
-    const health = await response.json();
-    const live = Object.entries(health.providers)
-      .filter((entry) => entry[1])
-      .map((entry) => entry[0]);
-    healthStatus.textContent = live.length ? `Live: ${live.join(", ")}` : "Mock mode ready";
-  } catch {
-    healthStatus.textContent = "Start server for analysis";
+  for (const candidate of apiBaseCandidates()) {
+    try {
+      const response = await fetch(`${candidate}/api/health`);
+      if (!response.ok) continue;
+      apiBase = candidate;
+      window.localStorage?.setItem("instasourceApiBase", apiBase);
+      const health = await response.json();
+      const live = Object.entries(health.providers)
+        .filter((entry) => entry[1])
+        .map((entry) => entry[0]);
+      const warning = health.warnings?.[0] ? ` | ${health.warnings[0]}` : "";
+      healthStatus.textContent = live.length ? `Live: ${live.join(", ")}${warning}` : `Mock mode ready${warning}`;
+      return;
+    } catch {
+      // Try the next candidate.
+    }
   }
+  healthStatus.textContent = "Start server for analysis";
+}
+
+function apiBaseCandidates() {
+  if (window.location.protocol !== "file:") return [""];
+  const params = new URLSearchParams(window.location.search);
+  const explicit = params.get("apiBase");
+  const saved = window.localStorage?.getItem("instasourceApiBase");
+  return [...new Set([
+    explicit,
+    saved,
+    "http://127.0.0.1:4124",
+    "http://127.0.0.1:4123",
+  ].filter(Boolean))];
+}
+
+async function fetchApi(path, options) {
+  if (apiBase) {
+    return fetch(`${apiBase}${path}`, options);
+  }
+
+  let lastError;
+  for (const candidate of apiBaseCandidates()) {
+    try {
+      const response = await fetch(`${candidate}${path}`, options);
+      apiBase = candidate;
+      window.localStorage?.setItem("instasourceApiBase", apiBase);
+      return response;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Could not reach InstaSource API server");
 }
 
 function renderResult(result) {

@@ -42,33 +42,40 @@ async function extractWithOpenAICompatibleVision({ apiUrl, apiKey, model, reques
     "If a dimension is not visible, do not invent it; put it in assumptions.",
   ].join(" ");
 
-  const response = await fetch(apiUrl, {
+  const body = {
+    model,
+    messages: [
+      {
+        role: "system",
+        content: "You are a manufacturing engineer. Extract conservative specs and call out uncertainty.",
+      },
+      {
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: imageUrl } },
+          { type: "text", text: prompt },
+        ],
+      },
+    ],
+  };
+  if (source === "kimi-vision") {
+    body.response_format = { type: "json_object" };
+    if (String(model || "").toLowerCase().includes("k2.6")) body.thinking = { type: "disabled" };
+  } else {
+    body.temperature = 0.1;
+  }
+
+  const response = await fetchWithTimeout(apiUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      messages: [
-        {
-          role: "system",
-          content: "You are a manufacturing engineer. Extract conservative specs and call out uncertainty.",
-        },
-        {
-          role: "user",
-          content: [
-            { type: "image_url", image_url: { url: imageUrl } },
-            { type: "text", text: prompt },
-          ],
-        },
-      ],
-    }),
-  });
+    body: JSON.stringify(body),
+  }, source === "kimi-vision" ? configTimeoutFromRequest(request) : 20000);
 
   if (!response.ok) {
-    throw new Error(`Vision API returned ${response.status}`);
+    throw new Error(await providerError("Vision API", response));
   }
 
   const data = await response.json();
@@ -79,6 +86,41 @@ async function extractWithOpenAICompatibleVision({ apiUrl, apiKey, model, reques
     ...normalizeSpec(parsed, request),
     source,
   };
+}
+
+function configTimeoutFromRequest() {
+  return Number(process.env.KIMI_TIMEOUT_MS || 20000);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`Vision API timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function providerError(provider, response) {
+  const body = await response.text().catch(() => "");
+  const message = extractProviderMessage(body);
+  return `${provider} returned ${response.status}${message ? `: ${message}` : ""}`;
+}
+
+function extractProviderMessage(body) {
+  if (!body) return "";
+  try {
+    const data = JSON.parse(body);
+    return data.error?.message || data.message || JSON.stringify(data).slice(0, 240);
+  } catch {
+    return body.slice(0, 240);
+  }
 }
 
 function mockExtractSpecification(request) {

@@ -11,36 +11,92 @@ async function generateFeasibilityReport(spec, suppliers, logistics, request, co
 }
 
 async function generateWithKimi(spec, suppliers, logistics, request, config) {
-  const response = await fetch(`${config.kimi.baseUrl}/chat/completions`, {
+  const body = {
+    model: config.kimi.reportModel || config.kimi.model,
+    max_tokens: config.kimi.maxTokens,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: [
+          "You are a sourcing analyst for custom manufacturing.",
+          "Return compact valid JSON only.",
+          "The JSON object must include: summary, feasibility, topRecommendation, risks, supplierNotes, costRangeUsd, timelineDays, confidence, questionsForBuyer.",
+        ].join(" "),
+      },
+      {
+        role: "user",
+        content: [
+          "Create a sourcing feasibility report as strict JSON.",
+          JSON.stringify({ spec, suppliers: suppliers.slice(0, 3), logistics, destination: request.destinationCountry }),
+        ].join("\n"),
+      },
+    ],
+  };
+  const thinking = kimiThinking(body.model);
+  if (thinking) body.thinking = thinking;
+  const temperature = kimiTemperature(body.model);
+  if (temperature !== undefined) body.temperature = temperature;
+
+  const response = await fetchWithTimeout(`${config.kimi.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.kimi.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: config.kimi.model,
-      temperature: 0.2,
-      messages: [
-        {
-          role: "system",
-          content: "You are a sourcing analyst for custom manufacturing. Be concise, conservative, and explicit about uncertainty.",
-        },
-        {
-          role: "user",
-          content: [
-            "Create a sourcing feasibility report as strict JSON.",
-            "Fields: summary, feasibility, topRecommendation, risks, supplierNotes, costRangeUsd, timelineDays, confidence, questionsForBuyer.",
-            JSON.stringify({ spec, suppliers: suppliers.slice(0, 3), logistics, destination: request.destinationCountry }),
-          ].join("\n"),
-        },
-      ],
-    }),
-  });
+    body: JSON.stringify(body),
+  }, config.kimi.timeoutMs);
 
-  if (!response.ok) throw new Error(`Kimi returned ${response.status}`);
+  if (!response.ok) throw new Error(await providerError("Kimi", response));
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || "";
   return parseJsonObject(content);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`Kimi timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function kimiTemperature(model) {
+  if (!process.env.KIMI_TEMPERATURE) return undefined;
+  return Number(process.env.KIMI_TEMPERATURE);
+}
+
+function kimiThinking(model) {
+  const value = String(process.env.KIMI_THINKING || "disabled").toLowerCase();
+  const modelName = String(model || "").toLowerCase();
+  if (value !== "disabled") return undefined;
+  if (modelName.includes("k2.6") || modelName.includes("k2.5")) {
+    return { type: "disabled" };
+  }
+  return undefined;
+}
+
+async function providerError(provider, response) {
+  const body = await response.text().catch(() => "");
+  const message = extractProviderMessage(body);
+  return `${provider} returned ${response.status}${message ? `: ${message}` : ""}`;
+}
+
+function extractProviderMessage(body) {
+  if (!body) return "";
+  try {
+    const data = JSON.parse(body);
+    return data.error?.message || data.message || JSON.stringify(data).slice(0, 240);
+  } catch {
+    return body.slice(0, 240);
+  }
 }
 
 function generateDeterministicReport(spec, suppliers, logistics) {
